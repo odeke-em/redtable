@@ -3,11 +3,25 @@ package redtable
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"testing"
 )
 
+func envOrAlternates(envVar string, alternates ...string) string {
+	if retr := os.Getenv(envVar); retr != "" {
+		return retr
+	}
+
+	for _, alt := range alternates {
+		if alt != "" {
+			return alt
+		}
+	}
+	return ""
+}
+
 func newTestClient() (*Client, error) {
-	return New("redis://localhost:6379")
+	return New(envOrAlternates(EnvRedisServerURL, "redis://localhost:6379"))
 }
 
 func TestNew(t *testing.T) {
@@ -65,7 +79,7 @@ func TestSettingAndGetting(t *testing.T) {
 		}
 	}
 
-	// First pass	
+	// First pass
 	for i, kvp := range kvps {
 		exists, err := client.HExists(tableName, kvp.key)
 		if !exists {

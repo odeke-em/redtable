@@ -17,6 +17,8 @@ const (
 	opHKeys   = "HKEYS"
 	opHExists = "HEXISTS"
 	opExec    = "EXEC"
+
+	EnvRedisServerURL = "REDIS_SERVER_URL"
 )
 
 var (
