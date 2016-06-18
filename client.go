@@ -1,6 +1,7 @@
 package redtable
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -22,7 +23,7 @@ const (
 )
 
 var (
-	ErrConnectionAlreadyClosed = fmt.Errorf("connection already closed")
+	ErrConnectionAlreadyClosed = errors.New("connection already closed")
 )
 
 type Client struct {
