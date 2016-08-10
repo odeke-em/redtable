@@ -109,6 +109,32 @@ func (c *Client) HDel(hashTableName string, key interface{}) (interface{}, error
 	return byKeyOp(c, opHDel, hashTableName, key)
 }
 
+// HPop performs a pop which is a combination of `HGet` and `HDel` from a HashTable
+func (c *Client) HPop(hashTableName string, key interface{}) (interface{}, error) {
+	// HPop is a combination of HGet+HDel, in that order
+	retrieved, err := c.HGet(hashTableName, key)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.HDel(hashTableName, key); err != nil {
+		return nil, err
+	}
+	return retrieved, nil
+}
+
+// HMove moves the contents keyed by a key from hashTableName1 to hashTableName2
+func (c *Client) HMove(hashTableName1, hashTableName2 string, key interface{}) (interface{}, error) {
+	table1Entry, err := c.HPop(hashTableName1, key)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := c.HSet(hashTableName2, key, table1Entry); err != nil {
+		return nil, err
+	}
+	return table1Entry, nil
+}
+
 func (c *Client) HKeys(hashTableName string) ([]interface{}, error) {
 	return c.doHashOp(opHKeys, hashTableName)
 }
