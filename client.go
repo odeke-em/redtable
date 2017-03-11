@@ -33,15 +33,23 @@ type Client struct {
 	conn redis.Conn
 }
 
-func New(redisServerURL string) (*Client, error) {
-	conn, err := redis.DialURL(redisServerURL)
+var errExpectingAURL = fmt.Errorf("expecting at least one URL")
 
-	if err != nil {
-		return nil, err
+func New(redisServerURLs ...string) (*Client, error) {
+	var conn redis.Conn
+	var err error = errExpectingAURL
+	for _, srvURL := range redisServerURLs {
+		conn, err = redis.DialURL(srvURL)
+
+		if err != nil {
+			continue
+		}
+
+		client := &Client{conn: conn}
+		return client, nil
 	}
 
-	client := &Client{conn: conn}
-	return client, nil
+	return nil, err
 }
 
 func (c *Client) Close() error {
