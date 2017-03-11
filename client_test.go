@@ -163,6 +163,34 @@ func clearTable(client *Client, tableName string) (pass, fail uint64) {
 	return pass, fail
 }
 
+func TestDel(t *testing.T) {
+	client, err := newTestClient()
+	if err != nil {
+		t.Fatalf("creating client err=%v", err)
+	}
+
+	table := uuid.NewRandom().String()
+	var otherTables []interface{}
+	for i := 0; i < 3; i++ {
+		otherTables = append(otherTables, uuid.NewRandom().String())
+	}
+
+	cleanup := func() error {
+		_, err := client.Del(table, otherTables...)
+		return err
+	}
+
+	for i := 0; i < 10; i++ {
+		strKey := fmt.Sprintf("%d", i)
+		if _, err := client.HSet(table, strKey, strKey); err != nil {
+			_ = cleanup()
+			t.Fatalf("#%d: failed to HSet: %v", i, err)
+		}
+	}
+
+	defer cleanup()
+}
+
 func TestHMove(t *testing.T) {
 	client, err := newTestClient()
 	if err != nil {

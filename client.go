@@ -18,6 +18,7 @@ const (
 	opHKeys   = "HKEYS"
 	opHExists = "HEXISTS"
 	opExec    = "EXEC"
+	opDel     = "DEL"
 
 	EnvRedisServerURL = "REDIS_SERVER_URL"
 )
@@ -97,8 +98,8 @@ func multiKeysOp(c *Client, opName, hashTableName string, keys ...interface{}) (
 	return c.doHashOp(opName, hashTableName, keys...)
 }
 
-func byKeyOp(c *Client, opName, hashTableName string, key interface{}) (interface{}, error) {
-	replies, err := multiKeysOp(c, opName, hashTableName, key)
+func byKeyOp(c *Client, opName, hashTableName string, keys ...interface{}) (interface{}, error) {
+	replies, err := multiKeysOp(c, opName, hashTableName, keys)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +161,13 @@ func (c *Client) HLen(hashTableName string) (int64, error) {
 
 	vStr := fmt.Sprintf("%v", first)
 	return strconv.ParseInt(vStr, 10, 64)
+}
+
+// Del deletes one or more collections by the
+// collection name, where any of the types are:
+// hash, set, sorted set, list.
+func (c *Client) Del(firstTable string, otherTables ...interface{}) (interface{}, error) {
+	return byKeyOp(c, opDel, firstTable, otherTables...)
 }
 
 func (c *Client) HExists(hashTableName string, key interface{}) (bool, error) {
