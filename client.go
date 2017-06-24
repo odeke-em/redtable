@@ -82,7 +82,6 @@ func (c *Client) doHashOp(opName, hashTableName string, args ...interface{}) ([]
 	if sendErr := c.conn.Send(opName, allArgs...); sendErr != nil {
 		return nil, sendErr
 	}
-
 	return redis.Values(c.conn.Do(opExec))
 }
 
@@ -99,7 +98,7 @@ func multiKeysOp(c *Client, opName, hashTableName string, keys ...interface{}) (
 }
 
 func byKeyOp(c *Client, opName, hashTableName string, keys ...interface{}) (interface{}, error) {
-	replies, err := multiKeysOp(c, opName, hashTableName, keys)
+	replies, err := multiKeysOp(c, opName, hashTableName, keys...)
 	if err != nil {
 		return nil, err
 	}
