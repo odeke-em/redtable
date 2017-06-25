@@ -168,6 +168,7 @@ func TestDel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating client err=%v", err)
 	}
+	defer client.Close()
 
 	table := uuid.NewRandom().String()
 	var otherTables []interface{}
@@ -179,6 +180,7 @@ func TestDel(t *testing.T) {
 		_, err := client.Del(table, otherTables...)
 		return err
 	}
+	defer cleanup()
 
 	for i := 0; i < 10; i++ {
 		strKey := fmt.Sprintf("%d", i)
@@ -187,8 +189,6 @@ func TestDel(t *testing.T) {
 			t.Fatalf("#%d: failed to HSet: %v", i, err)
 		}
 	}
-
-	defer cleanup()
 }
 
 func TestHMove(t *testing.T) {
@@ -250,5 +250,91 @@ func TestHMove(t *testing.T) {
 
 		// Then the cleanup
 		clearTable(client, primary)
+	}
+}
+
+func TestLPopPushLenIndex(t *testing.T) {
+	client, err := newTestClient()
+	if err != nil {
+		t.Fatalf("creating client err=%v", err)
+	}
+	defer client.Close()
+
+	tableName := uuid.NewRandom().String()
+	defer client.Del(tableName)
+
+	tests := [...]struct {
+		name string
+
+		init func()
+		do   func() error
+
+		wantCount int64
+		cleanup   func() error
+	}{
+		0: {
+			name: "lpush test",
+			init: func() {
+				client.LPush(tableName, "a", 2, 3)
+			},
+			do: func() error {
+				if count, err := client.LLen(tableName); err != nil || count != 3 {
+					return fmt.Errorf("err:%v; count=%v", err, count)
+				}
+				return nil
+			},
+			cleanup: func() error {
+				_, err := client.Del(tableName)
+				return err
+			},
+		},
+		1: {
+			name: "lpop+llen+lindex test",
+			init: func() {
+				client.LPush(tableName, "a", 2, 3, "y")
+			},
+			do: func() error {
+				if count, err := client.LLen(tableName); err != nil || count != 4 {
+					return fmt.Errorf("err:%v; count=%v", err, count)
+				}
+				for i := 0; i < 3; i++ {
+					if _, err := client.LPop(tableName); err != nil {
+						return err
+					}
+				}
+				if count, err := client.LLen(tableName); err != nil || count != 1 {
+					return fmt.Errorf("err:%v; count=%v", err, count)
+				}
+				retr, err := client.LIndex(tableName, 0)
+				if err != nil {
+					return fmt.Errorf("lindex err: %v", err)
+				}
+				str := fmt.Sprintf("%s", retr)
+				if str != "a" {
+					return fmt.Errorf(`got=%q want="a"`, str)
+				}
+				return nil
+			},
+			cleanup: func() error {
+				_, err := client.Del(tableName)
+				return err
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		if tt.init != nil {
+			tt.init()
+		}
+		if tt.do != nil {
+			if err := tt.do(); err != nil {
+				t.Errorf("#%d(%q): do err=%v", i, tt.name, err)
+			}
+		}
+		if tt.cleanup != nil {
+			if err := tt.cleanup(); err != nil {
+				t.Errorf("#%d(%q): cleanup err=%v", i, tt.name, err)
+			}
+		}
 	}
 }

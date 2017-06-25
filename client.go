@@ -19,6 +19,10 @@ const (
 	opHExists = "HEXISTS"
 	opExec    = "EXEC"
 	opDel     = "DEL"
+	opLLen    = "LLEN"
+	opLPush   = "LPUSH"
+	opLPop    = "LPOP"
+	opLIndex  = "LINDEX"
 
 	EnvRedisServerURL = "REDIS_SERVER_URL"
 )
@@ -181,4 +185,24 @@ func (c *Client) HExists(hashTableName string, key interface{}) (bool, error) {
 	}
 
 	return strconv.ParseBool(fmt.Sprintf("%v", first))
+}
+
+func (c *Client) LPush(tableName string, values ...interface{}) (interface{}, error) {
+	return byKeyOp(c, opLPush, tableName, values...)
+}
+
+func (c *Client) LPop(tableName string) (interface{}, error) {
+	return byKeyOp(c, opLPop, tableName)
+}
+
+func (c *Client) LLen(tableName string) (int64, error) {
+	res, err := byKeyOp(c, opLLen, tableName)
+	if err != nil {
+		return 0, err
+	}
+	return res.(int64), nil
+}
+
+func (c *Client) LIndex(tableName string, index int64) (interface{}, error) {
+	return byKeyOp(c, opLIndex, tableName, index)
 }
