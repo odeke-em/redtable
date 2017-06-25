@@ -10,19 +10,24 @@ import (
 )
 
 const (
-	opMulti   = "MULTI"
-	opHGet    = "HGET"
-	opHMGet   = "HMGET"
-	opHDel    = "HDEL"
-	opHSet    = "HSET"
-	opHKeys   = "HKEYS"
-	opHExists = "HEXISTS"
-	opExec    = "EXEC"
-	opDel     = "DEL"
-	opLLen    = "LLEN"
-	opLPush   = "LPUSH"
-	opLPop    = "LPOP"
-	opLIndex  = "LINDEX"
+	opMulti    = "MULTI"
+	opHGet     = "HGET"
+	opHMGet    = "HMGET"
+	opHDel     = "HDEL"
+	opHSet     = "HSET"
+	opHKeys    = "HKEYS"
+	opHExists  = "HEXISTS"
+	opExec     = "EXEC"
+	opDel      = "DEL"
+	opLLen     = "LLEN"
+	opLPush    = "LPUSH"
+	opLPop     = "LPOP"
+	opLIndex   = "LINDEX"
+	opSAdd     = "SADD"
+	opSMembers = "SMEMBERS"
+	opSPop     = "SPOP"
+	opSRem     = "SREM"
+	opSLen     = "SLEN"
 
 	EnvRedisServerURL = "REDIS_SERVER_URL"
 )
@@ -205,4 +210,23 @@ func (c *Client) LLen(tableName string) (int64, error) {
 
 func (c *Client) LIndex(tableName string, index int64) (interface{}, error) {
 	return byKeyOp(c, opLIndex, tableName, index)
+}
+
+func (c *Client) SAdd(tableName string, items ...interface{}) (interface{}, error) {
+	return byKeyOp(c, opSAdd, tableName, items...)
+}
+
+func (c *Client) SMembers(tableName string) (interface{}, error) {
+	return byKeyOp(c, opSMembers, tableName)
+}
+
+// SPop implements Redis command SPOP and it pops just 1 element from the set.
+func (c *Client) SPop(tableName string) (interface{}, error) {
+	return byKeyOp(c, opSPop, tableName)
+}
+
+// SRem implements Redis command SREM which removes elements from a set.
+func (c *Client) SRem(tableName string, key interface{}, otherKeys ...interface{}) (interface{}, error) {
+	keys := append([]interface{}{key}, otherKeys...)
+	return byKeyOp(c, opSRem, tableName, keys...)
 }

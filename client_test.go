@@ -2,6 +2,7 @@ package redtable
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -312,6 +313,98 @@ func TestLPopPushLenIndex(t *testing.T) {
 				str := fmt.Sprintf("%s", retr)
 				if str != "a" {
 					return fmt.Errorf(`got=%q want="a"`, str)
+				}
+				return nil
+			},
+			cleanup: func() error {
+				_, err := client.Del(tableName)
+				return err
+			},
+		},
+	}
+
+	for i, tt := range tests {
+		if tt.init != nil {
+			tt.init()
+		}
+		if tt.do != nil {
+			if err := tt.do(); err != nil {
+				t.Errorf("#%d(%q): do err=%v", i, tt.name, err)
+			}
+		}
+		if tt.cleanup != nil {
+			if err := tt.cleanup(); err != nil {
+				t.Errorf("#%d(%q): cleanup err=%v", i, tt.name, err)
+			}
+		}
+	}
+}
+
+func TestSAddMembersPush(t *testing.T) {
+	client, err := newTestClient()
+	if err != nil {
+		t.Fatalf("creating client err=%v", err)
+	}
+	defer client.Close()
+
+	tableName := uuid.NewRandom().String()
+	defer client.Del(tableName)
+
+	tests := [...]struct {
+		name string
+
+		init func()
+		do   func() error
+
+		wantCount int64
+		cleanup   func() error
+	}{
+		0: {
+			name: "sadd test",
+			init: func() {
+				client.SAdd(tableName, `"a"`, `2`, `3`, `2`, `3`, `2`, `"a"`)
+			},
+			do: func() error {
+				retr, err := client.SMembers(tableName)
+				if err != nil {
+					return err
+				}
+				wantBlob, _ := json.Marshal([]interface{}{`"a"`, `2`, `3`})
+
+				var collected []interface{}
+				listing := retr.([]interface{})
+				for _, t := range listing {
+					collected = append(collected, fmt.Sprintf("%s", t))
+				}
+				gotBlob, _ := json.Marshal(collected)
+				if !bytes.Equal(wantBlob, gotBlob) {
+					return fmt.Errorf("got=%q want=%q", gotBlob, wantBlob)
+				}
+				return nil
+			},
+			cleanup: func() error {
+				_, err := client.Del(tableName)
+				return err
+			},
+		},
+		1: {
+			name: "spop+slen test",
+			init: func() {
+				client.SAdd(tableName, "a", 2, 3, "y")
+			},
+			do: func() error {
+				for i := 0; i < 3; i++ {
+					if _, err := client.SPop(tableName); err != nil {
+						return err
+					}
+				}
+				retr, err := client.SMembers(tableName)
+				if err != nil {
+					return err
+				}
+				members := retr.([]interface{})
+				if count := len(members); count != 1 {
+					return fmt.Errorf("err:%v; count=%v", err, count)
 				}
 				return nil
 			},
