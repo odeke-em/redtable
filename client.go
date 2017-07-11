@@ -5,29 +5,33 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 )
 
 const (
-	opMulti    = "MULTI"
-	opHGet     = "HGET"
-	opHMGet    = "HMGET"
-	opHDel     = "HDEL"
-	opHSet     = "HSET"
-	opHKeys    = "HKEYS"
-	opHExists  = "HEXISTS"
-	opExec     = "EXEC"
-	opDel      = "DEL"
-	opLLen     = "LLEN"
-	opLPush    = "LPUSH"
-	opLPop     = "LPOP"
-	opLIndex   = "LINDEX"
-	opSAdd     = "SADD"
-	opSMembers = "SMEMBERS"
-	opSPop     = "SPOP"
-	opSRem     = "SREM"
-	opSLen     = "SLEN"
+	opMulti   = "MULTI"
+	opHGet    = "HGET"
+	opHMGet   = "HMGET"
+	opHDel    = "HDEL"
+	opHLen    = "HLEN"
+	opHSet    = "HSET"
+	opHKeys   = "HKEYS"
+	opHExists = "HEXISTS"
+	opExec    = "EXEC"
+	opDel     = "DEL"
+	opLLen    = "LLEN"
+	opLPush   = "LPUSH"
+	opLPop    = "LPOP"
+	opLIndex  = "LINDEX"
+	opSAdd    = "SADD"
+	opSPop    = "SPOP"
+	opSRem    = "SREM"
+	opSLen    = "SLEN"
+
+	opSMembers  = "SMEMBERS"
+	opSIsMember = "SISMEMBER"
 
 	EnvRedisServerURL = "REDIS_SERVER_URL"
 )
@@ -39,6 +43,8 @@ var (
 type Client struct {
 	shutdownMu    sync.Mutex
 	alreadyClosed bool
+
+	connMu sync.Mutex
 	// TODO: (@odeke-em) decide if we should have a pool of connections
 	// instead of using one connection or different dials per operation.
 	conn redis.Conn
@@ -50,7 +56,7 @@ func New(redisServerURLs ...string) (*Client, error) {
 	var conn redis.Conn
 	var err error = errExpectingAURL
 	for _, srvURL := range redisServerURLs {
-		conn, err = redis.DialURL(srvURL)
+		conn, err = redis.DialURL(srvURL, redis.DialConnectTimeout(350*time.Millisecond))
 
 		if err != nil {
 			continue
@@ -76,6 +82,13 @@ func (c *Client) Close() error {
 
 	c.alreadyClosed = true
 	return nil
+}
+
+func (c *Client) ConnErr() error {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	return c.conn.Err()
 }
 
 func (c *Client) doHashOp(opName, hashTableName string, args ...interface{}) ([]interface{}, error) {
@@ -157,7 +170,7 @@ func (c *Client) HKeys(hashTableName string) ([]interface{}, error) {
 }
 
 func (c *Client) HLen(hashTableName string) (int64, error) {
-	replies, err := c.doHashOp(opHDel, hashTableName)
+	replies, err := c.doHashOp(opHLen, hashTableName)
 	if err != nil {
 		return 0, err
 	}
@@ -218,6 +231,15 @@ func (c *Client) SAdd(tableName string, items ...interface{}) (interface{}, erro
 
 func (c *Client) SMembers(tableName string) (interface{}, error) {
 	return byKeyOp(c, opSMembers, tableName)
+}
+
+func (c *Client) SIsMember(tableName string, key interface{}) (bool, error) {
+	retr, err := byKeyOp(c, opSIsMember, tableName, key)
+	if err != nil {
+		return false, err
+	}
+	value := retr.(int64)
+	return value >= 1, nil
 }
 
 // SPop implements Redis command SPOP and it pops just 1 element from the set.
