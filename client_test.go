@@ -238,7 +238,7 @@ func TestHMove(t *testing.T) {
 		for key, liveValue := range kvpMap {
 			retrValue, err := client.HMove(primary, secondary, key)
 			if err != nil {
-				t.Errorf("#%d: err=%v for HMove wantErr=nil; primary=%v secondary=%v", i, primary, secondary)
+				t.Errorf("#%d: err=%v for HMove wantErr=nil; primary=%v secondary=%v", i, err, primary, secondary)
 			}
 
 			// We can only compare by string repr comparsions
@@ -369,14 +369,18 @@ func TestSAddMembersPush(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				wantBlob, _ := json.Marshal([]interface{}{`"a"`, `2`, `3`})
-
-				var collected []interface{}
-				listing := retr.([]interface{})
-				for _, t := range listing {
-					collected = append(collected, fmt.Sprintf("%s", t))
+				wantMap := map[interface{}]bool{
+					"a": true,
+					2:   true,
+					3:   true,
 				}
-				gotBlob, _ := json.Marshal(collected)
+				listing := retr.([]interface{})
+				gotMap := make(map[interface{}]bool)
+				for _, t := range listing {
+					gotMap[fmt.Sprintf("%s", t)] = true
+				}
+				wantBlob, _ := json.Marshal(wantMap)
+				gotBlob, _ := json.Marshal(gotMap)
 				if !bytes.Equal(wantBlob, gotBlob) {
 					return fmt.Errorf("got=%q want=%q", gotBlob, wantBlob)
 				}
