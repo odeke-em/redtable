@@ -32,7 +32,7 @@ func ExampleMulticonsumer() {
 	for i, kvp := range kvps {
 		_, err := client.HSet(tableName, kvp.key, kvp.value)
 		if err != nil {
-			log.Printf("#%d key:%v value %v failed err %v; comment %s", i, kvp.key, kvp.value, kvp.comment)
+			log.Printf("#%d key:%v value %v failed err %v; comment %s", i, kvp.key, kvp.value, err, kvp.comment)
 		}
 	}
 }

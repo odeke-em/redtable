@@ -41,70 +41,124 @@ var (
 )
 
 type Client struct {
-	shutdownMu    sync.Mutex
-	alreadyClosed bool
+	shutdownMu sync.Mutex
+	closeOnce  sync.Once
 
 	connMu sync.Mutex
-	// TODO: (@odeke-em) decide if we should have a pool of connections
-	// instead of using one connection or different dials per operation.
-	conn redis.Conn
+
+	// _curConn is the connection being currently used
+	_curConn redis.Conn
+	dialFn   func() (redis.Conn, error)
+	pool     *redis.Pool
 }
 
-var errExpectingAURL = fmt.Errorf("expecting at least one URL")
+func redisDialer(url string) func() (redis.Conn, error) {
+	return func() (redis.Conn, error) {
+		conn, err := redis.DialURL(url, redis.DialConnectTimeout(550*time.Millisecond))
+		return conn, err
+	}
+}
+
+var defaultRedisConnIdleTime = 4 * time.Minute
 
 func New(redisServerURLs ...string) (*Client, error) {
-	var conn redis.Conn
-	var err error = errExpectingAURL
+	var dialFn func() (redis.Conn, error)
 	for _, srvURL := range redisServerURLs {
-		conn, err = redis.DialURL(srvURL, redis.DialConnectTimeout(350*time.Millisecond))
-
+		fn := redisDialer(srvURL)
+		conn, err := fn()
 		if err != nil {
 			continue
 		}
-
-		client := &Client{conn: conn}
-		return client, nil
+		conn.Close()
+		dialFn = fn
+		break
 	}
 
-	return nil, err
+	if dialFn == nil {
+		return nil, errInvalidRedisURLs
+	}
+
+	client := &Client{
+		dialFn: dialFn,
+		pool:   poolFromDialer(dialFn),
+	}
+	return client, nil
 }
 
+func poolFromDialer(dialFn func() (redis.Conn, error)) *redis.Pool {
+	return &redis.Pool{
+		Dial:        dialFn,
+		MaxIdle:     4,    // Maximum number of idle connections in the pool
+		MaxActive:   1000, // Maximum number of active connections at any instance
+		IdleTimeout: 1 * time.Minute,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			if time.Since(t) < defaultRedisConnIdleTime {
+				return nil
+			}
+			_, err := c.Do("PING")
+			return err
+		},
+	}
+}
+
+func (c *Client) poolConn() redis.Conn {
+	if c.pool == nil {
+		c.pool = poolFromDialer(c.dialFn)
+	}
+	return c.pool.Get()
+}
+
+func (c *Client) conn() redis.Conn {
+	c.connMu.Lock()
+	defer c.connMu.Unlock()
+
+	if c._curConn == nil {
+		c._curConn = c.poolConn()
+		return c._curConn
+	}
+
+	cn := c._curConn
+	if cn.Err() == nil {
+		// Go to go then
+		return cn
+	}
+
+	// Otherwise time to refresh it
+	cn.Close()
+	c._curConn = nil
+	return c.conn()
+}
+
+var errInvalidRedisURLs = errors.New("expecting at least one valid URL connection URL")
+
 func (c *Client) Close() error {
-	c.shutdownMu.Lock()
-	defer c.shutdownMu.Unlock()
-	if c.alreadyClosed {
-		return ErrConnectionAlreadyClosed
-	}
-
-	if err := c.conn.Close(); err != nil {
-		return err
-	}
-
-	c.alreadyClosed = true
-	return nil
+	var err error = ErrConnectionAlreadyClosed
+	c.closeOnce.Do(func() {
+		err = c.pool.Close()
+	})
+	return err
 }
 
 func (c *Client) ConnErr() error {
 	c.connMu.Lock()
 	defer c.connMu.Unlock()
 
-	return c.conn.Err()
+	if conn := c._curConn; conn != nil {
+		return conn.Err()
+	}
+	return nil
 }
 
 func (c *Client) doHashOp(opName, hashTableName string, args ...interface{}) ([]interface{}, error) {
-	if c.alreadyClosed {
-		return nil, ErrConnectionAlreadyClosed
-	}
-
-	if err := c.conn.Send(opMulti); err != nil {
+	if err := c.conn().Send(opMulti); err != nil {
 		return nil, err
 	}
 
 	allArgs := append([]interface{}{hashTableName}, args...)
-	if sendErr := c.conn.Send(opName, allArgs...); sendErr != nil {
+	if sendErr := c.conn().Send(opName, allArgs...); sendErr != nil {
 		return nil, sendErr
 	}
-	return redis.Values(c.conn.Do(opExec))
+	return redis.Values(c.conn().Do(opExec))
 }
 
 func (c *Client) HSet(hashTableName string, key, value interface{}) (interface{}, error) {
